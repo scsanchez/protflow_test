@@ -82,9 +82,11 @@ server <- function(input, output, session) {
 
     rendered_files(character(0))
     message("METADATA: " , input$metadata_file$datapat)
+    
     message("metadata_path: ", input$metadata_file$datapath)
     message("comparisons_path: ", input$comparisons_file$datapath)
     message("psm_path: ", input$psm_file$datapath)
+    
     setup <- tryCatch({
       req(input$exp_id, input$metadata_file, input$comparisons_file, input$psm_file)
       
