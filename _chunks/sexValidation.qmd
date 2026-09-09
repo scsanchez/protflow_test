@@ -1,0 +1,94 @@
+## Sex validation
+
+This section checks whether the declared sex of each sample is consistent with the
+expression of canonical **Y-linked** marker proteins detected in the proteome.
+Samples are classified as **Male** (detectable Y-linked expression) or **Female**
+(absent/negligible Y-linked expression) and compared against the value declared
+in the metadata `Sex` column.
+
+```{r}
+#| label: sex validation
+
+SEX_MARKERS <- list(
+  human = c(
+    "DDX3Y", "RPS4Y1", "RPS4Y2", "USP9Y", "KDM5D",
+    "EIF1AY", "UTY", "TMSB4Y", "ZFY", "NLGN4Y"
+  ),
+  mouse = c("Ddx3y", "Eif2s3y", "Kdm5d", "Uty", "Usp9y"),
+  rat   = c("Ddx3y", "Eif2s3y", "Kdm5d", "Uty", "Usp9y"),
+  drome = c("kl-2", "kl-3", "kl-5", "ORY", "PPR-Y")
+)
+
+if (!(org_key %in% names(SEX_MARKERS))) {
+
+  cat("Organism", org_key, "is not available in the sex-marker reference list.\n")
+
+} else {
+
+  cat("Organism", org_key, "found in the sex-marker reference list.\n")
+
+  markers <- SEX_MARKERS[[org_key]]
+
+  df_sexMarkers_summary <- psm %>%
+    filter(Gene %in% markers) %>%
+    select(Gene, starts_with("Intensity ")) %>%
+    group_by(Gene) %>%
+    summarise(
+      across(starts_with("Intensity "), ~mean(.x, na.rm = TRUE)),
+      .groups = "drop"
+    )
+
+  if (nrow(df_sexMarkers_summary) > 0) {
+
+    cat("Male sex chromosome markers were detected in the dataset.\n")
+
+    df_sexMarkers_long <- df_sexMarkers_summary %>%
+      pivot_longer(
+        cols = starts_with("Intensity "),
+        names_to = "Sample",
+        values_to = "Intensity"
+      ) %>%
+      mutate(
+        Sample = str_remove(Sample, "^Intensity\\s+")
+      ) %>%
+      left_join(
+        metadata %>% select(BioReplicate, Condition),
+        by = c("Sample" = "BioReplicate")
+      )
+
+    p <- ggplot(
+      df_sexMarkers_long,
+      aes(
+        x = Gene,
+        y = Intensity,
+        fill = Condition,
+        text = paste(
+          "Gene:", Gene,
+          "<br>Sample:", Sample,
+          "<br>Condition:", Condition,
+          "<br>Intensity:", round(Intensity, 2)
+        )
+      )
+    ) +
+      geom_jitter(
+        aes(color = Condition),
+        width = 0.2,
+        alpha = 0.7,
+        size = 2
+      ) +
+      theme_bw() +
+      labs(
+        title = "Male Sex-Chromosome Marker Expression",
+        x = "Marker Gene",
+        y = "Mean Intensity"
+      )
+
+    ggplotly(p, tooltip = "text")
+
+  } else {
+
+    cat("No male sex chromosome markers were detected in the dataset.\n")
+
+  }
+}
+```

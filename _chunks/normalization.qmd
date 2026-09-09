@@ -1,0 +1,23 @@
+## Normalization
+
+Next, data is normalized using a sample loading (SL) normalization, due to the fact that the same amount of protein is labeled in each sample, and thus the sum of the intensities should be the same in each channel/sample. It is followed by a trimmed mean of M-values (TMM) normalization, that takes into account compositional bias. Compared to the non-normalized boxplot, the medians of the boxes should align better, forming a straight line:
+
+
+```{r}
+# Normalization
+df_norm_sl <- SL_norm(df, metadata)
+
+df_norm <- tmm_norm(df_norm_sl, metadata)
+
+prot_boxplot(prot_log2(df_norm, metadata), metadata, fill = "Condition") + 
+  ggplot2::labs(title = "Post-normalization")
+```
+
+```{r}
+#| results: 'asis'
+cat("See if this normalization affected the confounder plot:\n")
+```
+
+```{r}
+cofounders_plot(pca_prot(prot_log2(df_norm, metadata), metadata))
+```

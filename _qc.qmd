@@ -1,0 +1,152 @@
+---
+title: "QC Report"
+date: last-modified
+date-format: "iso"
+format:
+  html:
+    toc: true
+    embed-resources: true
+    include-after-body: footer.html
+execute:
+  warning: false
+  message: false
+  echo: false
+params:
+  data_path: ""
+  org_key: ""
+  exp_id: ""
+  tmt: ""
+  astral: ""
+  use_unique: ""
+  covars: ""
+---
+
+```{r}
+#| label: setup
+#| include: false
+library(here)
+source(here::here("_shared.R"))
+```
+
+```{r}
+#| label: functions
+#| include: false
+
+#jaccard_pair()
+jaccard_pair <- function(dict, i, j, col = 2) {
+  a     <- dict[[col]][[i]]
+  b     <- dict[[col]][[j]]
+  inter <- length(intersect(a, b))
+  union <- length(union(a, b))
+  if (union == 0) return(NA)
+  (inter / union) * 100
+}
+
+#build_jaccard_matrix()
+build_jaccard_matrix <- function(dict) {
+  n      <- nrow(dict)
+  labels <- dict$Fraction
+  mat    <- matrix(NA, nrow = n, ncol = n, dimnames = list(labels, labels))
+  for (i in seq_len(n)) {
+    for (j in i:n) {
+      score     <- jaccard_pair(dict, i, j, col = 2)
+      mat[i, j] <- score
+      mat[j, i] <- score
+    }
+  }
+  mat
+}
+
+#plot_jaccard_heatmap()
+plot_jaccard_heatmap <- function(mat, color_low, color_mid, color_high,
+                                 plot_title, limits = NULL) {
+  fraction_order <- rownames(mat)
+  
+  mat_lower <- mat
+  mat_lower[upper.tri(mat_lower)] <- NA
+  
+  df_long <- data.frame(
+    fraction_row = rep(rownames(mat_lower), times = ncol(mat_lower)),
+    fraction_col = rep(colnames(mat_lower), each  = nrow(mat_lower)),
+    jaccard      = as.vector(mat_lower)
+  ) %>%
+    dplyr::filter(!is.na(jaccard)) %>%
+    dplyr::mutate(
+      label_text   = ifelse(jaccard == 100, "100", sprintf("%.2f", jaccard)),
+      fraction_row = factor(fraction_row, levels = fraction_order),
+      fraction_col = factor(fraction_col, levels = fraction_order)
+    )
+  
+  if (is.null(limits)) limits <- c(0, max(df_long$jaccard, na.rm = TRUE))
+  values_scaled <- scales::rescale(c(limits[1], mean(limits), limits[2]))
+  
+  ggplot(df_long, aes(x = fraction_col, y = fraction_row, fill = jaccard)) +
+    geom_tile(color = "white") +
+    geom_text(aes(label = label_text), size = 2) +
+    scale_fill_gradientn(colours = c(color_low, color_mid, color_high),
+                         values = values_scaled, limits = limits,
+                         na.value = "transparent", name = "Jaccard (%)") +
+    labs(x = "Fraction", y = "Fraction", title = plot_title) +
+    theme_classic() +
+    coord_fixed() +
+    theme(
+      axis.title.x = element_text(margin = margin(t = 15)),
+      axis.title.y = element_text(margin = margin(r = 15)),
+      axis.text.x  = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 7),
+      axis.text.y  = element_text(size = 7),
+      plot.title   = element_text(face = "bold", size = 11)
+    )
+}
+```
+
+<!-- data -->
+```{r}
+#| child: "_chunks/data.qmd"
+```
+
+<br>
+
+<!-- comparisons -->
+```{r}
+#| child: "_chunks/comparisons.qmd"
+```
+
+<!-- unique peptide validation -->
+```{r}
+#| child: "_chunks/uniquePeptideValidation.qmd"
+```
+
+<!-- knockout validation -->
+```{r}
+#| child: "_chunks/knockoutValidation.qmd"
+```
+
+<!-- sex validation -->
+```{r}
+#| child: "_chunks/sexValidation.qmd"
+```
+
+<!-- fractionation - jaccard index -->
+```{r}
+#| child: "_chunks/fractionation.qmd"
+```
+
+<!-- fractionation - calibration (PPM) -->
+```{r}
+#| child: "_chunks/calibration.qmd"
+```
+
+<!-- quality control plots -->
+```{r}
+#| child: "_chunks/qualityControlPlots.qmd"
+```
+
+<!-- normalization -->
+```{r}
+#| child: "_chunks/normalization.qmd"
+```
+
+<!-- pca -->
+```{r}
+#| child: "_chunks/pca.qmd"
+```

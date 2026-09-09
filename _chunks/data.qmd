@@ -1,0 +1,13 @@
+## Data
+
+The metadata of the study is the following:
+
+```{r show-meta}
+DT::datatable(
+  metadata[, 6:7],
+  options = list(
+    pageLength = nrow(metadata),
+    dom        = "t"
+  )
+)
+```

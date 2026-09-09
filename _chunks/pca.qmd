@@ -1,0 +1,8 @@
+## PCA
+
+PCA shows the first 2 components:
+
+```{r}
+#| label: pca-plot
+plot_pca(pca_prot(prot_log2(df_norm, metadata), metadata), var_p = "Condition")
+```

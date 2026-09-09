@@ -1,0 +1,85 @@
+```{r}
+#| label: calibration-prep
+psm_clean <- janitor::clean_names(psm)
+
+psm_ppm <- psm_clean %>%
+  dplyr::mutate(
+    Fraction = stringr::str_extract(spectrum_file, "[^\\\\/]+(?=\\.[^\\\\/]*$)"),
+    ppm      = (delta_mass / calculated_peptide_mass) * 1e6
+  ) %>%
+  dplyr::select(Fraction, Peptide = peptide, Protein = protein, ppm)
+```
+
+## Calibration stability by fraction
+
+Mass accuracy is expressed as the deviation between the measured and the theoretical peptide mass in parts per million (PPM):
+
+$$\text{PPM} = \frac{\text{Delta Mass}}{\text{Calculated Peptide Mass}} \times 10^6$$
+
+Values close to **0 PPM** indicate accurate mass calibration. A systematic shift affecting all fractions may reflect a global calibration offset, whereas fraction-specific deviations could point to instrument drift or sample-related issues during acquisition. 
+
+<br>
+
+### Summary
+```{r}
+#| label: ppm-stats-table
+psm_ppm %>%
+  dplyr::group_by(Fraction) %>%
+  dplyr::summarise(
+    N      = dplyr::n(),
+    Median = round(median(ppm, na.rm = TRUE), 3),
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(as.numeric(stringr::str_extract(Fraction, "\\d+$"))) %>%
+  kableExtra::kbl(
+    col.names = c("Fraction", "N", "Median (PPM)")
+  ) %>%
+  kableExtra::kable_paper("hover", full_width = FALSE, font_size = 15)
+```
+
+<br>
+
+### Boxplot
+
+```{r}
+#| label: ppm-boxplot
+#| fig-height: 5
+#| fig-width: 9
+ggplot(psm_ppm, aes(x = Fraction, y = ppm, fill = Fraction)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.7) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  coord_cartesian(ylim = c(-5, 5)) +
+  theme_minimal() +
+  labs(x = "Fraction",
+       y = "Mass error (PPM)",
+       title = "PPM deviation by fraction") +
+  theme(
+    axis.title.x = element_text(margin = margin(t = 15)),
+    axis.title.y = element_text(margin = margin(r = 15)),
+    axis.text.x  = element_text(angle = 90, vjust = 0.5),
+    plot.title   = element_text(face = "bold", size = 11),
+    legend.position = "none"
+  )
+```
+
+### Histogram
+
+```{r}
+#| label: ppm-histogram
+#| fig-height: 5
+#| fig-width: 9
+ggplot(psm_ppm, aes(x = ppm, fill = Fraction)) +
+  geom_histogram(binwidth = 0.1, alpha = 0.7, position = "identity") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
+  coord_cartesian(xlim = c(-5, 5)) +
+  theme_minimal() +
+  labs(x = "Mass error (PPM)",
+       y = "Count",
+       title = "Mass error distribution") +
+  theme(
+    axis.title.x = element_text(margin = margin(t = 15)),
+    axis.title.y = element_text(margin = margin(r = 15)),
+    plot.title   = element_text(face = "bold", size = 11),
+    legend.position = "none"
+  )
+```

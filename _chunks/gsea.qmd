@@ -1,0 +1,59 @@
+### GSEA
+
+Gene Set Enrichment Analysis (GSEA, on gene ontology) does inform about the direction of the change (whether it is on the right or left of the 0, in the figures), and it is performed on the whole protein dataset, as it is performed with the goal of finding global changes in pathways. In here, all ontologies (BP, CC, MF) are mixed.
+
+```{r gsea}
+#| fig-width: 11
+#| fig-height: 13.5
+#| fig-align: center
+
+listy_prot_gsea <- list()
+
+if (inherits(df_limma, "list")){
+  
+  for(i in 1:length(df_limma)){
+    
+    protlist <- df_limma[[i]] %>% 
+      dplyr::select(Protein.IDs,
+                    logFC) %>% 
+      na.omit() %>% 
+      arrange(-logFC) %>% 
+      tibble::deframe()
+  
+    
+    egsea <- enrich_prot2(protlist, 
+                          universe = NULL,
+                          org = org_key,
+                          type.enrich = "gsea")
+    
+    listy_prot_gsea[[i]] <- egsea
+    names(listy_prot_gsea)[i] <- names(df_limma)[i]
+    
+    if(nrow(egsea@result[which(egsea@result$p.adjust < 0.05),]) > 0){
+
+          print(clusterProfiler::ridgeplot(egsea) +
+          scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 30)) +
+          ggplot2::labs(title = comp_labels[names(df_limma)[i]]) +
+        theme(axis.text.y = element_text(size = 11)))
+          
+      } else {
+        
+        cat("No significantly enriched GSEA terms.\n")
+        
+      }
+    }
+}
+
+listy_prot_gsea <- purrr::list_flatten(listy_prot_gsea)
+```
+
+```{r}
+gsea_exp <- purrr::map(listy_prot_gsea, ~.x@result) %>% 
+  purrr::discard(~ nrow(.x) == 0)
+
+openxlsx::write.xlsx(gsea_exp, file = paste0("results/",
+                                              format(Sys.time(), "%Y%m%d"),
+                                              exp_id,
+                                              "_proteome_GSEA.xlsx"))
+
+```

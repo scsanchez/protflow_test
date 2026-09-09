@@ -1,0 +1,33 @@
+## Quality control
+
+Mass spectrometry followed by search with MSFragger yielded 8596 proteins, distributed in each sample as shown below:
+
+```{r}
+#| label: qc-barplot
+prot_barplot(prot_log2(df, metadata), metadata)
+```
+
+Boxplots show that they will need minimal normalization:
+
+```{r}
+#| label: qc-boxplot-pre
+prot_boxplot(prot_log2(df, metadata), metadata, fill = "Condition") +
+  ggplot2::labs(title = "Pre-normalization")
+```
+
+And they also show good normal distribution:
+
+```{r}
+#| label: qc-density-pre
+prot_denplot(prot_log2(df, metadata), metadata, color = "Condition") +
+  ggplot2::labs(title = "Pre-normalization")
+```
+
+The following figure is a principal component analysis (or PCA) regression plot (heatmap). It informs of the possible importance of clinical or technical variables in the study (contained in the metadata), in terms of their ability to explain the information contained within the proteomic data. It is useful to find confounders or other variables to take into account when performing downstream statistical testing. First, a PCA is performed to extract the top principal components (PCs) of the proteomic data, which are orthogonal variables explaining the information contained within it. Then, the different clinical or technical variables in our study are regressed against the PCs. The heatmap shows the values of the R² and significance (FDR), indicating the strength of the relationship between the variables and the PCs.
+
+If nothing is shown, it means none of the variables has a strong enough (and significant) relationship with the PCs.
+
+```{r}
+#| label: qc-confounders-pre
+cofounders_plot(pca_prot(prot_log2(df, metadata), metadata))
+```

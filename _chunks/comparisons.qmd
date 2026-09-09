@@ -1,0 +1,9 @@
+The following table shows the comparisons performed in this experiment:
+
+```{r}
+#| label: comparisons
+DT::datatable(
+  comp,
+  options = list(pageLength = nrow(comp), dom = "t")
+)
+```

@@ -1,0 +1,133 @@
+```{r}
+#| label: fractionation-prep
+psm_clean <- janitor::clean_names(psm)
+
+psm_frac <- psm_clean %>%
+  dplyr::mutate(
+    Fraction = stringr::str_extract(spectrum_file, "[^\\\\/]+(?=\\.[^\\\\/]*$)")
+  ) %>%
+  dplyr::select(Fraction, Peptide = peptide, Protein = protein)
+
+n_fractions <- dplyr::n_distinct(psm_frac$Fraction)
+
+peptide_dict <- psm_frac %>%
+  dplyr::group_by(Fraction) %>%
+  dplyr::summarise(
+    Peptides           = list(unique(gsub(" ", "", Peptide))),
+    Number_of_Peptides = dplyr::n_distinct(Peptide),
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(as.numeric(stringr::str_extract(Fraction, "\\d+$")))
+
+protein_dict <- psm_frac %>%
+  dplyr::group_by(Fraction) %>%
+  dplyr::summarise(
+    Proteins           = list(unique(Protein)),
+    Number_of_Proteins = dplyr::n_distinct(Protein),
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(as.numeric(stringr::str_extract(Fraction, "\\d+$")))
+
+peptide_matrix <- build_jaccard_matrix(peptide_dict)
+protein_matrix <- build_jaccard_matrix(protein_dict)
+```
+
+## PSM-level fractionation
+
+This section evaluates fractionation resolution at the PSM level (prior to protein-level rollup), summarizing unique peptides/proteins per fraction and quantifying inter-fraction overlap via the Jaccard index.
+
+### Overall summary
+
+```{r}
+#| label: fractionation-summary
+summary_psm <- data.frame(
+  Metric = c("Total PSMs", "Fractions detected", "Unique peptides", "Unique proteins"),
+  Value  = c(nrow(psm), n_fractions,
+             dplyr::n_distinct(psm_frac$Peptide),
+             dplyr::n_distinct(psm_frac$Protein))
+)
+
+DT::datatable(summary_psm, rownames = FALSE, options = list(dom = "t"))
+```
+
+<br>
+
+```{r}
+#| label: fractionation-barplot-peptides
+#| fig-height: 5
+#| fig-width: 8
+peptide_bar <- peptide_dict %>%
+  dplyr::mutate(Fraction = factor(Fraction, levels = unique(Fraction)))
+
+y_max_pep <- max(peptide_bar$Number_of_Peptides) * 1.25
+
+ggplot(peptide_bar, aes(x = Fraction, y = Number_of_Peptides)) +
+  geom_col(alpha = 0.80, fill = "#C06C5B", color = "grey25") +
+  geom_text(aes(label = Number_of_Peptides),
+            angle = 90, vjust = 0.5, hjust = -0.15, size = 3) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, y_max_pep)) +
+  labs(x = "Fraction", y = "Count", title = "Unique peptides per fraction") +
+  theme_classic() +
+  theme(
+    axis.title.x = element_text(margin = margin(t = 15)),
+    axis.title.y = element_text(margin = margin(r = 15)),
+    axis.text.x  = element_text(angle = 90, vjust = 0.5),
+    plot.title   = element_text(face = "bold", size = 11)
+  )
+```
+
+```{r}
+#| label: fractionation-barplot-proteins
+#| fig-height: 5
+#| fig-width: 8
+protein_bar <- protein_dict %>%
+  dplyr::mutate(Fraction = factor(Fraction, levels = unique(Fraction)))
+
+y_max_pro <- max(protein_bar$Number_of_Proteins) * 1.25
+
+ggplot(protein_bar, aes(x = Fraction, y = Number_of_Proteins)) +
+  geom_col(alpha = 0.80, fill = "#457B9D", color = "grey25") +
+  geom_text(aes(label = Number_of_Proteins),
+            angle = 90, vjust = 0.5, hjust = -0.15, size = 3) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, y_max_pro)) +
+  labs(x = "Fraction", y = "Count", title = "Unique proteins per fraction") +
+  theme_classic() +
+  theme(
+    axis.title.x = element_text(margin = margin(t = 15)),
+    axis.title.y = element_text(margin = margin(r = 15)),
+    axis.text.x  = element_text(angle = 90, vjust = 0.5),
+    plot.title   = element_text(face = "bold", size = 11)
+  )
+```
+
+### Jaccard Index
+
+The Jaccard index quantifies the overlap between two fractions as the percentage of shared elements out of all unique elements combined:
+
+$$J(A,B) = \frac{|A \cap B|}{|A \cup B|} \times 100$$
+
+A value of **0%** means the two fractions share no peptides or proteins (perfect separation), while **100%** indicates that both fractions are identical. High overlap between adjacent fractions may suggest insufficient chromatographic resolution.
+
+```{r}
+#| label: fractionation-jaccard-peptides
+#| fig-height: 6
+#| fig-width: 7
+plot_jaccard_heatmap(
+  mat        = peptide_matrix,
+  color_low  = "#F4F1DE", color_mid = "#81B29A", color_high = "#C06C5B",
+  plot_title = "Peptide overlap between fractions (Jaccard %)",
+  limits     = c(0, 10)
+)
+```
+
+```{r}
+#| label: fractionation-jaccard-proteins
+#| fig-height: 6
+#| fig-width: 7
+plot_jaccard_heatmap(
+  mat        = protein_matrix,
+  color_low  = "#F4F1DE", color_mid = "#6C7A89", color_high = "#C08497",
+  plot_title = "Protein overlap between fractions (Jaccard %)",
+  limits     = c(25, 50)
+)
+```

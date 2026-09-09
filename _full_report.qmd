@@ -1,0 +1,341 @@
+---
+title: "Full Report"
+date: last-modified
+date-format: "iso"
+format:
+  html:
+    toc: true
+    embed-resources: true
+    include-after-body: footer.html
+execute:
+  warning: false
+  message: false
+  echo: false
+params:
+  data_path: ""
+  org_key: ""
+  exp_id: ""
+  tmt: ""
+  astral: ""
+  use_unique: ""
+  covars: ""
+---
+
+```{r}
+#| label: setup
+#| include: false
+library(here)
+source(here::here("_shared.R"))
+```
+
+```{r}
+#| label: functions
+#| include: false
+
+# export_results2()
+export_results2 <- function(limma_res, df_norm) {
+  
+  prot_info <- raw$protein %>%
+    dplyr::select(Index, Gene, Protein.Description, n_peptides, n_psm)
+  
+  listy <- list()
+  for (i in seq_along(limma_res)) {
+    nam  <- names(limma_res)[i]
+    temp <- limma_res[[i]] %>%
+      dplyr::select(Protein.IDs, logFC, P.Value, adj.P.Val) %>%
+      dplyr::rename_with(~paste0(nam, "_", .x), everything()) %>%
+      dplyr::rename_with(~"Protein.IDs", ends_with("Protein.IDs"))
+    listy[[nam]] <- temp
+  }
+  
+  listy %>%
+    purrr::reduce(dplyr::left_join, by = "Protein.IDs") %>%
+    dplyr::left_join(prot_info, by = c("Protein.IDs" = "Index")) %>%
+    dplyr::relocate(Gene:n_psm, .after = Protein.IDs) %>%
+    dplyr::left_join(df_norm, by = "Protein.IDs")
+}
+
+#make_volcano_plotly()
+make_volcano_plotly <- function(df, pval_col, gene_col, title = NULL) {
+  
+  df <- df %>%
+    mutate(
+      neg_log_p = -log10(.data[[pval_col]]),
+      regulation = case_when(
+        adj.P.Val < 0.05 & logFC >  0 ~ "Up-regulated",
+        adj.P.Val < 0.05 & logFC <  0 ~ "Down-regulated",
+        TRUE                          ~ "Not significant"
+      ),
+      tooltip = paste0(
+        "Gene: ",          .data[[gene_col]],
+        "<br>log2(FC): ",    round(logFC, 3),
+        "<br>adj.P.Val: ", signif(adj.P.Val, 3)
+      )
+    )
+  
+  p <- ggplot(df, aes(x = logFC, y = neg_log_p,
+                      color = regulation,
+                      text  = tooltip,
+                      customdata = .data[[gene_col]])) +
+    geom_point(alpha = 0.7, size = 1.8) +
+    geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "grey50") +
+    scale_color_manual(
+      values = c(
+        "Up-regulated"   = "#E64B35",
+        "Down-regulated" = "#4DBBD5",
+        "Not significant" = "grey60"
+      ),
+      breaks = c("Up-regulated", "Down-regulated", "Not significant"),
+      name   = NULL
+    ) +
+    labs(
+      title = title,
+      x     = "Log2(FC)",
+      y     = "-log10(FDR)"
+    ) +
+    theme_classic()
+  
+  ggplotly(p, tooltip = "text") %>%
+    toWebGL() %>% 
+    layout(
+      xaxis = list(title = "Log2(FC)"),
+      yaxis = list(title = "-log10(FDR)"),
+      dragmode = "select"
+    ) %>% 
+    htmlwidgets::onRender("
+      function(el, x) {
+        el.on('plotly_selected', function(eventData) {
+          if (!eventData || !eventData.points || eventData.points.length === 0) {
+            Plotly.relayout(el, {annotations: []});
+            return;
+          }
+
+          var MAX_TAGS = 40; 
+          
+          if (eventData.points.length > MAX_TAGS) {
+            var warning = [{
+              x: eventData.range.x[0] + (eventData.range.x[1] - eventData.range.x[0])/2,
+              y: eventData.range.y[1],
+              text: '⚠️ Too many proteins selected (' + eventData.points.length + '). Please make a smaller selection.',
+              xref: 'x', yref: 'y', showarrow: false,
+              font: {size: 12, color: 'red', weight: 'bold'},
+              bgcolor: 'white', bordercolor: 'red', borderwidth: 1
+            }];
+            Plotly.relayout(el, {annotations: warning});
+            return;
+          }
+
+          var newAnnotations = eventData.points.map(function(pt, index) {
+            var angle = (index % 4) * (Math.PI / 2); 
+            var distance = 25 + (Math.floor(index / 4) * 12); 
+            
+            var ax_val = Math.cos(angle) * distance;
+            var ay_val = -Math.sin(angle) * distance;
+            
+            if (Math.abs(ay_val) < 10) { ay_val = -30; } 
+
+            return {
+              x: pt.x,
+              y: pt.y,
+              text: pt.customdata, 
+              xref: 'x', yref: 'y',
+              showarrow: true,
+              arrowhead: 1,      
+              arrowsize: 0.8,
+              arrowcolor: 'rgba(100, 100, 100, 0.6)',
+              ax: ax_val,        
+              ay: ay_val,        
+              font: {size: 9, color: '#222222'}, 
+              bgcolor: 'rgba(255, 255, 255, 0.9)', 
+              bordercolor: 'rgba(200, 200, 200, 0.6)', 
+              borderwidth: 1
+            };
+          });
+
+          Plotly.relayout(el, {annotations: newAnnotations});
+        });
+        
+        el.on('plotly_deselect', function() {
+          Plotly.relayout(el, {annotations: []});
+        });
+      }
+    ")
+}
+
+#enrich_prot2()
+enrich_prot2 <- function(de, universe, org, type.enrich = "go", readable = TRUE) {
+  
+  org_obj <- switch(org,
+                    celegans = org.Ce.eg.db::org.Ce.eg.db,
+                    drome    = org.Dm.eg.db::org.Dm.eg.db,
+                    human    = org.Hs.eg.db::org.Hs.eg.db,
+                    mouse    = org.Mm.eg.db::org.Mm.eg.db,
+                    rat      = org.Rn.eg.db::org.Rn.eg.db,
+                    yeast    = org.Sc.sgd.db::org.Sc.sgd.db
+  )
+  
+  if (type.enrich == "go") {
+    make_go <- clusterProfiler::enrichGO(gene          = de,
+                                         OrgDb         = org_obj,
+                                         universe      = universe,
+                                         keyType       = "UNIPROT",
+                                         ont           = "ALL",
+                                         pAdjustMethod = "BH",
+                                         pvalueCutoff  = 0.01,
+                                         qvalueCutoff  = 0.05,
+                                         readable      = readable,
+                                         minGSSize     = 4)
+    
+    make_go
+    
+  } else {
+    make_gsea <- clusterProfiler::gseGO(geneList     = de,
+                                        OrgDb        = org_obj,
+                                        keyType      = "UNIPROT",
+                                        ont          = "ALL",
+                                        minGSSize    = 100,
+                                        maxGSSize    = 500,
+                                        pvalueCutoff = 0.05,
+                                        verbose      = FALSE)
+    make_gsea
+  }
+}
+
+#jaccard_pair()
+jaccard_pair <- function(dict, i, j, col = 2) {
+  a     <- dict[[col]][[i]]
+  b     <- dict[[col]][[j]]
+  inter <- length(intersect(a, b))
+  union <- length(union(a, b))
+  if (union == 0) return(NA)
+  (inter / union) * 100
+}
+
+#build_jaccard_matrix()
+build_jaccard_matrix <- function(dict) {
+  n      <- nrow(dict)
+  labels <- dict$Fraction
+  mat    <- matrix(NA, nrow = n, ncol = n, dimnames = list(labels, labels))
+  for (i in seq_len(n)) {
+    for (j in i:n) {
+      score     <- jaccard_pair(dict, i, j, col = 2)
+      mat[i, j] <- score
+      mat[j, i] <- score
+    }
+  }
+  mat
+}
+
+#plot_jaccard_heatmap()
+plot_jaccard_heatmap <- function(mat, color_low, color_mid, color_high,
+                                 plot_title, limits = NULL) {
+  fraction_order <- rownames(mat)
+  
+  mat_lower <- mat
+  mat_lower[upper.tri(mat_lower)] <- NA
+  
+  df_long <- data.frame(
+    fraction_row = rep(rownames(mat_lower), times = ncol(mat_lower)),
+    fraction_col = rep(colnames(mat_lower), each  = nrow(mat_lower)),
+    jaccard      = as.vector(mat_lower)
+  ) %>%
+    dplyr::filter(!is.na(jaccard)) %>%
+    dplyr::mutate(
+      label_text   = ifelse(jaccard == 100, "100", sprintf("%.2f", jaccard)),
+      fraction_row = factor(fraction_row, levels = fraction_order),
+      fraction_col = factor(fraction_col, levels = fraction_order)
+    )
+  
+  if (is.null(limits)) limits <- c(0, max(df_long$jaccard, na.rm = TRUE))
+  values_scaled <- scales::rescale(c(limits[1], mean(limits), limits[2]))
+  
+  ggplot(df_long, aes(x = fraction_col, y = fraction_row, fill = jaccard)) +
+    geom_tile(color = "white") +
+    geom_text(aes(label = label_text), size = 2) +
+    scale_fill_gradientn(colours = c(color_low, color_mid, color_high),
+                         values = values_scaled, limits = limits,
+                         na.value = "transparent", name = "Jaccard (%)") +
+    labs(x = "Fraction", y = "Fraction", title = plot_title) +
+    theme_classic() +
+    coord_fixed() +
+    theme(
+      axis.title.x = element_text(margin = margin(t = 15)),
+      axis.title.y = element_text(margin = margin(r = 15)),
+      axis.text.x  = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 7),
+      axis.text.y  = element_text(size = 7),
+      plot.title   = element_text(face = "bold", size = 11)
+    )
+}
+```
+
+<!-- data -->
+```{r}
+#| child: "_chunks/data.qmd"
+```
+
+<br>
+
+<!-- comparisons -->
+```{r}
+#| child: "_chunks/comparisons.qmd"
+```
+
+<!-- knockout validation -->
+```{r}
+#| child: "_chunks/knockoutValidation.qmd"
+```
+
+<!-- sex validation -->
+```{r}
+#| child: "_chunks/sexValidation.qmd"
+```
+
+<!-- fractionation - jaccard index -->
+```{r}
+#| child: "_chunks/fractionation.qmd"
+```
+
+<!-- fractionation - calibration (PPM) -->
+```{r}
+#| child: "_chunks/calibration.qmd"
+```
+
+<!-- quality control plots -->
+```{r}
+#| child: "_chunks/qualityControlPlots.qmd"
+```
+
+<!-- normalization -->
+```{r}
+#| child: "_chunks/normalization.qmd"
+```
+
+<!-- pca -->
+```{r}
+#| child: "_chunks/pca.qmd"
+```
+
+<!-- limma -->
+```{r}
+#| child: "_chunks/limma.qmd"
+```
+
+<!-- volcano -->
+```{r}
+#| child: "_chunks/volcano.qmd"
+```
+
+<!-- enrichment -->
+```{r}
+#| child: "_chunks/enrichment.qmd"
+```
+
+<!-- gsea -->
+```{r}
+#| child: "_chunks/gsea.qmd"
+```
+
+<!-- kegg -->
+```{r}
+#| child: "_chunks/kegg.qmd"
+```

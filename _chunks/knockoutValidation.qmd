@@ -1,0 +1,59 @@
+## Knockout validation
+
+The following barplot shows the intensities of the selected KO protein across samples:
+
+```{r}
+#| label: knockout validation
+
+KOProtein <- metadata$KOProtein[1]
+
+has_KOProtein <- length(KOProtein) == 1 &&
+  !is.na(KOProtein) &&
+  !(toupper(trimws(KOProtein)) %in% c("", "-", "NA"))
+
+if (has_KOProtein) {
+
+  df_KOProtein <- psm_proteinFiltered %>%
+    filter(toupper(`Protein ID`) == toupper(trimws(KOProtein)))
+
+  if (nrow(df_KOProtein) > 0) {
+
+    plot_df <- df_KOProtein %>%
+      pivot_longer(
+        cols = -`Protein ID`,
+        names_to = "BioReplicate",
+        values_to = "Abundance"
+      ) %>%
+      left_join(
+        metadata %>% select(BioReplicate, Condition),
+        by = "BioReplicate"
+      )
+
+    ggplot(
+      plot_df,
+      aes(
+        x = BioReplicate,
+        y = Abundance,
+        fill = Condition
+      )
+    ) +
+      geom_col() +
+      theme_bw() +
+      labs(
+        title = paste("Protein selected:", KOProtein),
+        x = "Sample",
+        y = "Abundance"
+      ) +
+      theme(
+        axis.text.x = element_text(angle = 90, hjust = 1,),
+        legend.position = "none"
+      )
+
+  } else {
+    cat("KO protein not found:", KOProtein)
+  }
+
+} else {
+  cat("No valid KO protein selected (NA, '-', 'NA', or empty value)")
+}
+```

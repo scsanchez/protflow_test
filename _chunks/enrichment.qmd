@@ -1,0 +1,128 @@
+## Enrichment
+
+### GO enrichment
+
+The following figures accompany the excel file with more detailed information. For each comparison, the CC (cellular compartment), BP (biological process) and MF (molecular function) GO enriched terms are plotted (only those with an adjusted P value \< 0.05, or if none were found, by P value \< 0.05). If no figure is shown, no significant enrichment was found.
+
+```{r}
+df_imp = df_norm
+
+list_prot_go <- list()
+
+if (inherits(df_limma, "list")){
+  
+  for(i in 1:length(df_limma)){
+    
+    temp <- df_limma[[i]] %>% 
+    left_join(dplyr::select(raw$protein,
+                            Index,
+                            Gene),
+              by = c("Protein.IDs" = "Index"))
+    
+    if (nrow(temp[temp$P.Value < .05,]) == 0){
+      
+      cat("There were no diferentially expressed proteins in the comparison", 
+          names(df_limma)[i], "\n")
+      
+    } else if (nrow(temp[which(temp$adj.P.Val < .05),]) > 0){
+      
+      ids_up <- temp$Protein.IDs[which(temp$adj.P.Val < .05 & temp$logFC > 0)]
+      ids_down <- temp$Protein.IDs[which(temp$adj.P.Val < .05 & temp$logFC < 0)]
+      
+      ego_up <- enrich_prot2(ids_up, df_imp$Protein.IDs, org = org_key, readable = F)
+      
+      ego_down <- enrich_prot2(ids_down, df_imp$Protein.IDs, org = org_key, readable = F)
+      
+      list_prot_go[[i]] <- list("up" = ego_up, "down" = ego_down)
+      names(list_prot_go)[i] <- names(df_limma)[i]
+      
+      
+    } else if (nrow(temp[which(temp$P.Value < .05),]) > 0){
+      
+      ids_up <- temp$Protein.IDs[which(temp$P.Value < .05 & temp$logFC > 0)]
+      ids_down <- temp$Protein.IDs[which(temp$P.Value < .05 & temp$logFC < 0)]
+      
+      ego_up <- enrich_prot2(ids_up, df_imp$Protein.IDs, org = org_key)
+      
+      ego_down <- enrich_prot2(ids_down, df_imp$Protein.IDs, org = org_key)
+      
+      list_prot_go[[i]] <- list("up" = ego_up, "down" = ego_down)
+      names(list_prot_go)[i] <- names(df_limma)[i]
+      
+      }
+    } 
+  }
+
+list_prot_go <- purrr::compact(purrr::list_flatten(list_prot_go))
+
+names(list_prot_go) <- janitor::make_clean_names(names(list_prot_go))
+```
+
+```{r}
+#| fig-align: center
+#| fig-width: 10
+
+figs <- list()
+
+for (i in 1:length(list_prot_go)){
+  
+  if (nrow(list_prot_go[[i]]@result) > 0){
+    
+    temp <- list_prot_go[[i]]@result
+    nam  <- names(list_prot_go)[i]
+    
+    direction <- dplyr::case_when(
+      grepl("_up$",   nam) ~ "Up-regulated",
+      grepl("_down$", nam) ~ "Down-regulated",
+      TRUE                 ~ nam
+    )
+    
+    color_title <- dplyr::case_when(
+      grepl("_up$",   nam) ~ "#E64B35",
+      grepl("_down$", nam) ~ "#4DBBD5",
+      TRUE                 ~ "black"
+    )
+    
+    orig_name <- gsub("_(up|down)$", "", nam)
+
+    matched_key <- names(comp_labels)[
+    janitor::make_clean_names(names(comp_labels)) == orig_name
+    ]
+
+    title_label <- paste0(comp_labels[matched_key], " — ", direction)
+    
+    figs[[i]] <- temp %>% 
+      dplyr::mutate(Description = stringr::str_to_sentence(Description)) %>% 
+      group_by(ONTOLOGY) %>% 
+      slice(1:10) %>% 
+      ungroup() %>% 
+      ggplot(aes(FoldEnrichment, reorder(Description, FoldEnrichment))) +
+      geom_point(aes(size = Count, color = p.adjust)) +
+      labs(y     = "GO Term",
+           size  = "Protein count",
+           title = title_label) +
+      theme_bw() +
+      scale_color_gradient() +
+      facet_grid(ONTOLOGY~., scale = "free") +
+      theme(plot.title = element_text(color = color_title, face = "bold"))
+    
+    names(figs)[i] <- nam 
+  }
+}
+
+figs_c <- purrr::compact(figs)
+
+for (nm in names(figs_c)) {
+  print(figs_c[[nm]])
+}
+```
+
+```{r}
+go_exp <- purrr::map(list_prot_go, ~.x@result) %>% 
+  purrr::discard(~ nrow(.x) == 0)
+
+openxlsx::write.xlsx(go_exp, file = paste0("results/",
+                                              format(Sys.time(), "%Y%m%d"),
+                                              exp_id,
+                                              "_proteome_GO_enrichment.xlsx"))
+```

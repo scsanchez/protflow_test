@@ -1,0 +1,28 @@
+## Volcano plots
+
+Volcano plots are interactive. Hover over the points to get information.
+
+```{r}
+#| label: res-volcano-plots
+#| results: asis
+#| warning: false
+purrr::walk(seq_along(df_limma), function(i) {
+  
+  temp <- df_limma[[i]] %>%
+    left_join(dplyr::select(raw$protein, Index, Gene),
+              by = c("Protein.IDs" = "Index"))
+  
+  pval_col <- if (nrow(temp[which(temp$adj.P.Val < 0.05), ]) > 0) "adj.P.Val" else "P.Value"
+  
+  contrast_name <- comp_labels[names(df_limma)[i]]
+  
+  p <- make_volcano_plotly(temp, pval_col, "Gene", title = contrast_name)
+  
+  out <- knitr::knit_child(
+    text  = c("```{r}", "#| echo: false", "#| warning: false", "p", "```"),
+    envir = environment(),
+    quiet = TRUE
+  )
+  cat(out, sep = "\n")
+})
+```

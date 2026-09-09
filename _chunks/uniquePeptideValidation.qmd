@@ -1,0 +1,59 @@
+## Peptide Validation
+
+The following barplot shows the intensities of the selected peptide across samples:
+
+```{r}
+#| label: peptide validation
+
+KOPeptide <- metadata$Peptide[1]
+
+has_KOPeptide <- length(KOPeptide) == 1 &&
+  !is.na(KOPeptide) &&
+  !(toupper(trimws(KOPeptide)) %in% c("", "-", "NA"))
+
+if (has_KOPeptide) {
+
+  df_KOPeptide <- df_norm_peptide %>%
+    filter(toupper(`Protein.IDs`) == toupper(trimws(KOPeptide)))
+
+  if (nrow(df_KOPeptide) > 0) {
+
+    plot_df <- df_KOPeptide %>%
+      pivot_longer(
+        cols = -`Protein.IDs`,
+        names_to = "BioReplicate",
+        values_to = "Abundance"
+      ) %>%
+      left_join(
+        metadata %>% select(BioReplicate, Condition),
+        by = "BioReplicate"
+      )
+
+    ggplot(
+      plot_df,
+      aes(
+        x = BioReplicate,
+        y = Abundance,
+        fill = Condition
+      )
+    ) +
+      geom_col() +
+      theme_bw() +
+      labs(
+        title = paste("Peptide selected:", toupper(KOPeptide)),
+        x = "Sample",
+        y = "Abundance"
+      ) +
+      theme(
+        axis.text.x = element_text(angle = 90, hjust = 1),
+        legend.position = "none"
+      )
+
+  } else {
+    cat("KO peptide not found:", KOPeptide)
+  }
+
+} else {
+  cat("No valid KO peptide selected (NA, '-', 'NA', or empty value)")
+}
+```

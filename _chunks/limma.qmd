@@ -1,0 +1,46 @@
+```{r}
+#| label: limma
+#| include: false
+df_limma <- limma_de(df_norm, # the function already log2-transforms
+                     metadata,
+                     comp,
+                     org = org_key,
+                     anova = F,
+                     covars = covars)
+
+comp_order <- paste(comp$Condition, comp$Control, sep = "-")
+df_limma <- df_limma[comp_order]
+
+```
+
+```{r}
+#| label: exp-res
+
+res_limma <- export_results2(df_limma, 
+                             df_norm) 
+
+openxlsx::write.xlsx(res_limma, file = paste0("results/",
+                                              format(Sys.time(), "%Y%m%d"),
+                                              exp_id,
+                                              "_results_wide.xlsx"))
+```
+
+## Statistical modeling
+
+Differential expression analysis is performed using **limma** (taking into account the experimental design and any covariables necessary). The following table shows the number of up and down-regulated proteins (based on the **adjusted P value**) per comparison:
+
+```{r}
+comp_labels <- setNames(
+  paste0(seq_along(df_limma), ". ", gsub("-", " vs. ", names(df_limma))),
+  names(df_limma)
+)
+
+res_table <- result_table(df_limma) %>%
+  tibble::rownames_to_column("Comparison") %>%
+  mutate(Comparison = comp_labels[Comparison]) %>%
+  arrange(Comparison)
+
+DT::datatable(res_table,
+              rownames = FALSE,
+              options  = list(pageLength = nrow(res_table), dom = "t"))
+```
