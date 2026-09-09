@@ -121,7 +121,7 @@ server <- function(input, output, session) {
       },
       args   = list(params = setup$params, mode = setup$mode, label = setup$exp_name),
       stdout = lp,
-      stderr = lp,
+      stderr = "2>&1",
       wd     = getwd()
     )
 
