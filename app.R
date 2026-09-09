@@ -82,12 +82,13 @@ server <- function(input, output, session) {
 
     rendered_files(character(0))
     message("METADATA: " , input$metadata_file$datapat)
+    message("metadata_path: ", input$metadata_file$datapath)
+    message("comparisons_path: ", input$comparisons_file$datapath)
+    message("psm_path: ", input$psm_file$datapath)
     setup <- tryCatch({
       req(input$exp_id, input$metadata_file, input$comparisons_file, input$psm_file)
       
-      message("metadata_path: ", metadata_path)
-      message("comparisons_path: ", comparisons_path)
-      message("psm_path: ", psm_path)
+     
       built <- build_uploaded_experiment(
         exp_id           = input$exp_id,
         org_key          = input$org_key,
@@ -125,7 +126,7 @@ server <- function(input, output, session) {
       },
       args   = list(params = setup$params, mode = setup$mode, label = setup$exp_name),
       stdout = lp,
-      stderr = "2>&1",
+      stderr = lp,
       wd     = getwd()
     )
 
