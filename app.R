@@ -85,6 +85,9 @@ server <- function(input, output, session) {
     setup <- tryCatch({
       req(input$exp_id, input$metadata_file, input$comparisons_file, input$psm_file)
       
+      message("metadata_path: ", metadata_path)
+      message("comparisons_path: ", comparisons_path)
+      message("psm_path: ", psm_path)
       built <- build_uploaded_experiment(
         exp_id           = input$exp_id,
         org_key          = input$org_key,
@@ -96,6 +99,7 @@ server <- function(input, output, session) {
         comparisons_path = input$comparisons_file$datapath,
         psm_path         = input$psm_file$datapath
       )
+      
       
       list(exp_name = built$exp_name, params = built$params, mode = input$mode)
       
